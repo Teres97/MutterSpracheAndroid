@@ -21,7 +21,7 @@ import java.util.TimerTask
 
 class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private lateinit var textToSpeech: TextToSpeech
-    private lateinit var sentences: MutableList<String>
+    private lateinit var sentences: MutableList<Triple<String, String, String>>
     private lateinit var timer: Timer
     private lateinit var listView: ListView
 
@@ -62,10 +62,13 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
         val database: SQLiteDatabase = SQLiteDatabase.openDatabase(databasePath, null, SQLiteDatabase.OPEN_READWRITE)
         val cursor: Cursor = database.rawQuery("SELECT rowid, text, count FROM sentences", null)
-        sentences = ArrayList()
+        sentences = mutableListOf()
         while (cursor.moveToNext()) {
-            val sentence: String = cursor.getString(0) + " " + cursor.getString(1) + " " + cursor.getString(2)
-            sentences.add(sentence)
+            val value1: String = cursor.getString(0)
+            val value2: String = cursor.getString(1)
+            val value3: String = cursor.getString(2)
+
+            sentences.add(Triple(value1, value2, value3))
         }
         cursor.close()
         database.close()
@@ -137,7 +140,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         if (sentences.isNotEmpty()) {
             val random = Random()
             val index = random.nextInt(sentences.size)
-            val sentence = sentences[index]
+            val sentence = sentences[index].second
 
             // Установка языка воспроизведения на немецкий
             textToSpeech.language = Locale.GERMAN
@@ -148,6 +151,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             runOnUiThread{
                 textView.text = sentence
             }
+            val dbHelper = DatabaseHelper(this)
+            dbHelper.updateSentence(sentences[index].first, sentences[index].third)
             showSentences()
         }
     }
@@ -157,10 +162,13 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         val databasePath = applicationContext.getDatabasePath(DATABASE_NAME).path
         val database: SQLiteDatabase = SQLiteDatabase.openDatabase(databasePath, null, SQLiteDatabase.OPEN_READWRITE)
         val cursor: Cursor = database.rawQuery("SELECT rowid, text, count FROM sentences ORDER BY count DESC", null)
-        sentences = ArrayList()
+        sentences = mutableListOf()
         while (cursor.moveToNext()) {
-            val sentence: String = cursor.getString(0) + " " + cursor.getString(1) + " " + cursor.getString(2)
-            sentences.add(sentence)
+            val value1: String = cursor.getString(0)
+            val value2: String = cursor.getString(1)
+            val value3: String = cursor.getString(2)
+
+            sentences.add(Triple(value1, value2, value3))
         }
         cursor.close()
         database.close()

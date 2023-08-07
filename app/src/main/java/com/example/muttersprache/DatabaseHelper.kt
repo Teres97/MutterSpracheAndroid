@@ -62,6 +62,15 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         return deletedRows
     }
 
+    fun updateSentence(id: String, count: String): Int {
+        val db = this.writableDatabase
+        val contentValues = ContentValues()
+        contentValues.put("count", count.toInt()+1)
+        val updatedRows = db.update(TABLE_NAME, contentValues, "rowid = ?", arrayOf(id))
+        db.close()
+        return updatedRows
+    }
+
     fun getAllSentences(): List<String> {
         val sentenceList = mutableListOf<String>()
         val db = this.readableDatabase
