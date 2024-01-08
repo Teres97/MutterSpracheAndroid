@@ -17,6 +17,7 @@ import java.util.Locale
 import java.util.Random
 import java.util.Timer
 import java.util.TimerTask
+import kotlin.math.log
 
 
 class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
@@ -27,6 +28,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     private var speed: Float = 0.7f
     private var repeatTime:Long = 60000
+    private var repeatSentence: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -97,6 +99,9 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         val stopButton: Button = findViewById(R.id.stop_button)
         stopButton.setOnClickListener { stopSpeech() }
 
+        val repeatButton: Button = findViewById(R.id.repeat_button)
+        repeatButton.setOnClickListener { repeatSpeech() }
+
         val deleteIDInput: EditText = findViewById(R.id.deleteId)
 
         val deleteButton: Button = findViewById(R.id.deleteIdButton)
@@ -123,6 +128,16 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         })
     }
 
+    private fun repeatSpeech() {
+
+
+        // Установка языка воспроизведения на немецкий
+        textToSpeech.language = Locale.GERMAN
+        textToSpeech.setSpeechRate(speed)
+        // Воспроизведение выбранной строки
+        textToSpeech.speak(repeatSentence, TextToSpeech.QUEUE_FLUSH, null)
+    }
+
     private fun startSpeech() {
         timer = Timer()
         timer.schedule(object : TimerTask() {
@@ -136,12 +151,13 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         timer.cancel()
     }
 
-    private fun speakRandomSentence() {
+    private fun speakRandomSentence(){
         if (sentences.isNotEmpty()) {
             val random = Random()
             val index = random.nextInt(sentences.size)
             val sentence = sentences[index].second
-
+            repeatSentence = sentence
+            print(repeatSentence)
             // Установка языка воспроизведения на немецкий
             textToSpeech.language = Locale.GERMAN
             textToSpeech.setSpeechRate(speed)
