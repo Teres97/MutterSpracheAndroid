@@ -10,6 +10,12 @@
         android:layout_height="wrap_content"
         android:hint="Your Text" />
 
+    <EditText
+        android:id="@+id/translateText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Translation" />
+
     <Button
         android:id="@+id/addButton"
         android:layout_width="wrap_content"

@@ -14,7 +14,10 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         private const val TABLE_NAME = "sentences"
         private const val COLUMN_ID = "rowid"
         private const val COLUMN_TEXT = "text"
+        private const val COLUMN_TRANSLATION_TEXT = "translation"
         private const val COLUMN_INT_FIELD = "count"
+        private const val COLUMN_NAME_TRANSLATION = "translation"
+        private const val COLUMN_NAME_LANGUAGE = "language"
     }
     override fun onCreate(db: SQLiteDatabase) {
 //        val databasePath = applicationContext.getDatabasePath(DATABASE_NAME).path
@@ -38,16 +41,55 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
 //        }
     }
 
+    fun addColumnIfNeeded() {
+        val db = this.writableDatabase
+        val cursor = db.rawQuery("PRAGMA table_info($TABLE_NAME)", null)
+        var translationColumnExists = false
+
+        // Проверка наличия столбца "translation" в таблице
+        while (cursor.moveToNext()) {
+            val columnIndex = cursor.getColumnIndex("name")
+            if (columnIndex >= 0) {
+                val columnName = cursor.getString(columnIndex)
+                if (columnName == COLUMN_NAME_TRANSLATION) {
+                    translationColumnExists = true
+                    break
+                }
+            }
+        }
+        cursor.close()
+
+        // Если столбца "translation" нет, то добавляем его
+        if (!translationColumnExists) {
+            val addColumnQuery1 = "ALTER TABLE $TABLE_NAME ADD COLUMN $COLUMN_NAME_TRANSLATION TEXT"
+            val addColumnQuery2 = "ALTER TABLE $TABLE_NAME ADD COLUMN $COLUMN_NAME_LANGUAGE TEXT"
+            db.execSQL(addColumnQuery1)
+            db.execSQL(addColumnQuery2)
+
+        }
+
+        db.close()
+    }
+
+    fun newTable(){
+        val db = this.writableDatabase
+        val addColumnQuery3 = "UPDATE $TABLE_NAME SET $COLUMN_NAME_TRANSLATION = 'rus'"
+        val addColumnQuery4 = "UPDATE $TABLE_NAME SET $COLUMN_NAME_LANGUAGE = 'ger'"
+        db.execSQL(addColumnQuery3)
+        db.execSQL(addColumnQuery4)
+    }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         db.execSQL("DROP TABLE IF EXISTS $TABLE_NAME")
         onCreate(db)
     }
 
-    fun addSentence(sentence: String, count: Int): Long {
+    fun addSentence(sentence: String, translation: String, count: Int, language: String): Long {
         val db = this.writableDatabase
         val contentValues = ContentValues()
         contentValues.put(COLUMN_TEXT, sentence)
+        contentValues.put(COLUMN_TRANSLATION_TEXT, translation)
         contentValues.put(COLUMN_INT_FIELD, count)
+        contentValues.put(COLUMN_NAME_LANGUAGE, language)
         val id = db.insert(TABLE_NAME, null, contentValues)
         db.close()
         return id
