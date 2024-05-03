@@ -20,25 +20,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         private const val COLUMN_NAME_LANGUAGE = "language"
     }
     override fun onCreate(db: SQLiteDatabase) {
-//        val databasePath = applicationContext.getDatabasePath(DATABASE_NAME).path
-//        // Проверяем, существует ли уже файл базы данных
-//        if (!File(databasePath).exists()) {
-//            // Открываем поток для копирования файла из assets во внутреннее хранилище
-//            val inputStream = applicationContext.assets.open("new.db")
-//            val outputStream = FileOutputStream(databasePath)
-//
-//            // Копируем файл
-//            val buffer = ByteArray(1024)
-//            var length: Int
-//            while (inputStream.read(buffer).also { length = it } > 0) {
-//                outputStream.write(buffer, 0, length)
-//            }
-//
-//            // Закрываем потоки
-//            outputStream.flush()
-//            outputStream.close()
-//            inputStream.close()
-//        }
+
     }
 
     fun addColumnIfNeeded() {
@@ -63,6 +45,10 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         if (!translationColumnExists) {
             val addColumnQuery1 = "ALTER TABLE $TABLE_NAME ADD COLUMN $COLUMN_NAME_TRANSLATION TEXT"
             val addColumnQuery2 = "ALTER TABLE $TABLE_NAME ADD COLUMN $COLUMN_NAME_LANGUAGE TEXT"
+            val addColumnQuery3 = "UPDATE $TABLE_NAME SET $COLUMN_NAME_TRANSLATION = 'rus'"
+            val addColumnQuery4 = "UPDATE $TABLE_NAME SET $COLUMN_NAME_LANGUAGE = 'ger'"
+            db.execSQL(addColumnQuery3)
+            db.execSQL(addColumnQuery4)
             db.execSQL(addColumnQuery1)
             db.execSQL(addColumnQuery2)
 
@@ -71,13 +57,6 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         db.close()
     }
 
-    fun newTable(){
-        val db = this.writableDatabase
-        val addColumnQuery3 = "UPDATE $TABLE_NAME SET $COLUMN_NAME_TRANSLATION = 'rus'"
-        val addColumnQuery4 = "UPDATE $TABLE_NAME SET $COLUMN_NAME_LANGUAGE = 'ger'"
-        db.execSQL(addColumnQuery3)
-        db.execSQL(addColumnQuery4)
-    }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         db.execSQL("DROP TABLE IF EXISTS $TABLE_NAME")
         onCreate(db)
@@ -111,24 +90,5 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         val updatedRows = db.update(TABLE_NAME, contentValues, "rowid = ?", arrayOf(id))
         db.close()
         return updatedRows
-    }
-
-    fun getAllSentences(): List<String> {
-        val sentenceList = mutableListOf<String>()
-        val db = this.readableDatabase
-        val query = "SELECT * FROM $TABLE_NAME"
-        val cursor = db.rawQuery(query, null)
-        if (cursor.moveToFirst()) {
-            do {
-                val id = cursor.getString(0)
-                val text = cursor.getString(1)
-                val intField = cursor.getString(2)
-                val sentence: String = id.toString() + " " + text + " " + intField
-                sentenceList.add(sentence)
-            } while (cursor.moveToNext())
-        }
-        cursor.close()
-        db.close()
-        return sentenceList
     }
 }

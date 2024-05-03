@@ -18,15 +18,21 @@ import java.util.Random
 import java.util.Timer
 import java.util.TimerTask
 
-data class Quintuple<T1, T2, T3, T4, T5>(val first: T1, val second: T2, val third: T3, val fourth: T4, val fifth: T5)
+data class Quintuple<T1, T2, T3, T4, T5>(val first: T1, val second: T2, val third: T3, val fourth: T4, val fifth: T5){
+    override fun toString(): String {
+        return "$first $second $third $fourth $fifth"
+    }
+}
 
 class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private lateinit var textToSpeech: TextToSpeech
     private lateinit var sentences: MutableList<Quintuple<String, String, String, String, String>>
     private lateinit var timer: Timer
     private lateinit var listView: ListView
+    private lateinit var deleteIDInput: EditText
 
     private var speed: Float = 0.7f
+    private var currentDeleteID: String = ""
     private var repeatTime:Long = 60000
     private var repeatSentence: String = ""
     private var flagTimer: Boolean = false
@@ -63,8 +69,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         }
 
         val database: SQLiteDatabase = SQLiteDatabase.openDatabase(databasePath, null, SQLiteDatabase.OPEN_READWRITE)
-        val cursor: Cursor = database.rawQuery("SELECT rowid, text, count, translation, language FROM sentences", null)
-        dbHelper.newTable()
+        val cursor: Cursor = database.rawQuery("SELECT rowid, text, translation, count, language FROM sentences", null)
         sentences = mutableListOf()
         while (cursor.moveToNext()) {
             val value1: String = cursor.getString(0)
@@ -109,7 +114,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         val repeatButton: Button = findViewById(R.id.repeat_button)
         repeatButton.setOnClickListener { repeatSpeech() }
 
-        val deleteIDInput: EditText = findViewById(R.id.deleteId)
+        deleteIDInput = findViewById(R.id.deleteId)
 
         val deleteButton: Button = findViewById(R.id.deleteIdButton)
         deleteButton.setOnClickListener {
@@ -183,7 +188,9 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 textView.text = sentence
             }
             val dbHelper = DatabaseHelper(this)
-            dbHelper.updateSentence(sentences[index].first, sentences[index].third)
+            dbHelper.updateSentence(sentences[index].first, sentences[index].fourth)
+            currentDeleteID = sentences[index].first
+            deleteIDInput.setText(currentDeleteID)
             showSentences()
         }
     }
@@ -192,7 +199,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         val DATABASE_NAME = "new.db"
         val databasePath = applicationContext.getDatabasePath(DATABASE_NAME).path
         val database: SQLiteDatabase = SQLiteDatabase.openDatabase(databasePath, null, SQLiteDatabase.OPEN_READWRITE)
-        val cursor: Cursor = database.rawQuery("SELECT rowid, text, count, translation, language FROM sentences ORDER BY count DESC", null)
+        val cursor: Cursor = database.rawQuery("SELECT rowid, text, translation, count, language FROM sentences ORDER BY count DESC", null)
         sentences = mutableListOf()
         while (cursor.moveToNext()) {
             val value1: String = cursor.getString(0)
