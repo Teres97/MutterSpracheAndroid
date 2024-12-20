@@ -1,24 +1,21 @@
 package com.example.muttersprache
 
+import android.app.AlertDialog
+import android.content.DialogInterface
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
-import android.widget.ArrayAdapter
-import android.widget.Button
-import android.widget.EditText
-import android.widget.ListView
-import android.widget.SeekBar
-import android.widget.TextView
+import android.widget.*
 import androidx.activity.ComponentActivity
 import java.io.File
 import java.io.FileOutputStream
-import java.util.Locale
-import java.util.Random
+import java.util.*
 import java.util.Timer
 import java.util.TimerTask
+import kotlin.math.log
 
-data class Quintuple<T1, T2, T3, T4, T5>(val first: T1, val second: T2, val third: T3, val fourth: T4, val fifth: T5){
+data class Quintuple<T1, T2, T3, T4, T5>(val first: T1, val second: T2, val third: T3, val fourth: T4, val fifth: T5) {
     override fun toString(): String {
         return "$first $second $third $fourth $fifth"
     }
@@ -33,75 +30,56 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     private var speed: Float = 0.7f
     private var currentDeleteID: String = ""
-    private var repeatTime:Long = 60000
+    private var repeatTime: Long = 60000
     private var repeatSentence: String = ""
     private var flagTimer: Boolean = false
+    private var language: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         val dbHelper = DatabaseHelper(this)
-
         listView = findViewById(R.id.listView)
-        // Инициализация базы данных и получение всех строк
-        val DATABASE_NAME = "new.db"
 
-        // Путь к файлу базы данных внутри внутреннего хранилища
+        val DATABASE_NAME = "new.db"
         val databasePath = applicationContext.getDatabasePath(DATABASE_NAME).path
         dbHelper.addColumnIfNeeded()
-        // Проверяем, существует ли уже файл базы данных
-        if (!File(databasePath).exists()) {
-            // Открываем поток для копирования файла из assets во внутреннее хранилище
-            val inputStream = applicationContext.assets.open("new.db")
-            val outputStream = FileOutputStream(databasePath)
 
-            // Копируем файл
+        if (!File(databasePath).exists()) {
+            val inputStream = applicationContext.assets.open(DATABASE_NAME)
+            val outputStream = FileOutputStream(databasePath)
             val buffer = ByteArray(1024)
             var length: Int
             while (inputStream.read(buffer).also { length = it } > 0) {
                 outputStream.write(buffer, 0, length)
             }
-            // Закрываем потоки
             outputStream.flush()
             outputStream.close()
             inputStream.close()
         }
-
-        val database: SQLiteDatabase = SQLiteDatabase.openDatabase(databasePath, null, SQLiteDatabase.OPEN_READWRITE)
-        val cursor: Cursor = database.rawQuery("SELECT rowid, text, translation, count, language FROM sentences", null)
-        sentences = mutableListOf()
-        while (cursor.moveToNext()) {
-            val value1: String = cursor.getString(0)
-            val value2: String = cursor.getString(1)
-            val value3: String = cursor.getString(2)
-            val value4: String = cursor.getString(3)
-            val value5: String = cursor.getString(4)
-
-            sentences.add(Quintuple(value1, value2, value3, value4, value5))
-        }
-        cursor.close()
-        database.close()
-
+        language = "en"
+        loadSentencesFromDatabase(databasePath)
         val adapter = ArrayAdapter(this, R.layout.list_item_layout, R.id.textViewText, sentences)
         listView.adapter = adapter
 
-        // Инициализация TTS
         textToSpeech = TextToSpeech(this, this)
 
         val editText: EditText = findViewById(R.id.editText)
-
-        val tranlsateText: EditText = findViewById(R.id.translateText)
-
+        val translateText: EditText = findViewById(R.id.translateText)
         val addButton: Button = findViewById(R.id.addButton)
         addButton.setOnClickListener {
             val text = editText.text.toString()
-            val tranlsatetext = tranlsateText.text.toString()
+            val translation = translateText.text.toString()
             if (text.isNotEmpty()) {
-                dbHelper.addSentence(text, tranlsatetext, 0, "ger") // вставка данных, 0 - начальное значение счетчика
+                when (language) {
+                    "de" -> dbHelper.addSentence(text, translation, 0, "de")
+                    "en" -> dbHelper.addSentence(text, translation, 0, "en")
+                    else -> dbHelper.addSentence(text, translation, 0, "en")
+                }
                 editText.text.clear()
-                tranlsateText.text.clear()// очистка поля ввода
-                showSentences()
+                translateText.text.clear()
+                showSentences(databasePath)
             }
         }
 
@@ -118,112 +96,121 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
         val deleteButton: Button = findViewById(R.id.deleteIdButton)
         deleteButton.setOnClickListener {
-            if(deleteIDInput.text.isNotEmpty()){
+            if (deleteIDInput.text.isNotEmpty()) {
                 val deleteID = deleteIDInput.text.toString().toInt()
                 dbHelper.deleteSentence(deleteID)
-                showSentences()
+                showSentences(databasePath)
             }
         }
 
         val speedSeekBar: SeekBar = findViewById(R.id.speedSeekBar)
         speedSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                // Масштабируем значение в диапазоне от 0.5 до 1.5
                 speed = ((progress.toFloat() / 100) + 0.0).toFloat()
             }
 
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {
-                // Ничего не требуется при начале трекинга
-            }
-
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                // Ничего не требуется при окончании трекинга
-            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
+
+        val languageButton: Button = findViewById(R.id.languageButton)
+        languageButton.setOnClickListener { showLanguageSelectionDialog() }
+    }
+
+    private fun loadSentencesFromDatabase(databasePath: String) {
+        val database: SQLiteDatabase = SQLiteDatabase.openDatabase(databasePath, null, SQLiteDatabase.OPEN_READWRITE)
+        val cursor: Cursor = database.rawQuery("SELECT rowid, text, translation, count, language FROM sentences where language=?", arrayOf(language))
+        sentences = mutableListOf()
+        while (cursor.moveToNext()) {
+            sentences.add(Quintuple(cursor.getString(0), cursor.getString(1), cursor.getString(2), cursor.getString(3), cursor.getString(4)))
+        }
+        cursor.close()
+        database.close()
     }
 
     private fun repeatSpeech() {
-
-
-        // Установка языка воспроизведения на немецкий
-        textToSpeech.language = Locale.GERMAN
         textToSpeech.setSpeechRate(speed)
-        // Воспроизведение выбранной строки
         textToSpeech.speak(repeatSentence, TextToSpeech.QUEUE_FLUSH, null)
     }
 
     private fun startSpeech() {
-        if(flagTimer == false) {
+        if (!flagTimer) {
             timer = Timer()
             timer.schedule(object : TimerTask() {
                 override fun run() {
                     speakRandomSentence()
                 }
             }, 0, repeatTime)
-            flagTimer = true// Воспроизводить каждые 60 секунд
+            flagTimer = true
         }
     }
 
     private fun stopSpeech() {
-        if(flagTimer) {
+        if (flagTimer) {
             timer.cancel()
             flagTimer = false
         }
     }
 
-    private fun speakRandomSentence(){
+    private fun speakRandomSentence() {
         if (sentences.isNotEmpty()) {
-            val random = Random()
-            val index = random.nextInt(sentences.size)
+            val index = Random().nextInt(sentences.size)
             val sentence = sentences[index].second
             repeatSentence = sentence
-            print(repeatSentence)
-            // Установка языка воспроизведения на немецкий
-            textToSpeech.language = Locale.GERMAN
             textToSpeech.setSpeechRate(speed)
-            // Воспроизведение выбранной строки
             textToSpeech.speak(sentence, TextToSpeech.QUEUE_FLUSH, null)
+
             val textView: TextView = findViewById(R.id.textViewSentences)
-            runOnUiThread{
-                textView.text = sentence
-            }
+            runOnUiThread { textView.text = sentence }
+
             val dbHelper = DatabaseHelper(this)
             dbHelper.updateSentence(sentences[index].first, sentences[index].fourth)
             currentDeleteID = sentences[index].first
             deleteIDInput.setText(currentDeleteID)
-            showSentences()
+            showSentences(applicationContext.getDatabasePath("new.db").path)
         }
     }
 
-    private fun showSentences() {
-        val DATABASE_NAME = "new.db"
-        val databasePath = applicationContext.getDatabasePath(DATABASE_NAME).path
+    private fun showSentences(databasePath: String) {
         val database: SQLiteDatabase = SQLiteDatabase.openDatabase(databasePath, null, SQLiteDatabase.OPEN_READWRITE)
-        val cursor: Cursor = database.rawQuery("SELECT rowid, text, translation, count, language FROM sentences ORDER BY count DESC", null)
+        val cursor: Cursor = database.rawQuery("SELECT rowid, text, translation, count, language FROM sentences where language=? ORDER BY count DESC", arrayOf(language))
         sentences = mutableListOf()
         while (cursor.moveToNext()) {
-            val value1: String = cursor.getString(0)
-            val value2: String = cursor.getString(1)
-            val value3: String = cursor.getString(2)
-            val value4: String = cursor.getString(3)
-            val value5: String = cursor.getString(4)
-
-            sentences.add(Quintuple(value1, value2, value3, value4, value5))
+            sentences.add(Quintuple(cursor.getString(0), cursor.getString(1), cursor.getString(2), cursor.getString(3), cursor.getString(4)))
         }
         cursor.close()
         database.close()
 
         val adapter = ArrayAdapter(this, R.layout.list_item_layout, R.id.textViewText, sentences)
-        runOnUiThread {
-            listView.adapter = adapter
-        }
+        runOnUiThread { listView.adapter = adapter }
+        print(language)
+    }
+
+    private fun showLanguageSelectionDialog() {
+        val languages = arrayOf("English", "German")
+        val builder = AlertDialog.Builder(this)
+        builder.setTitle("Select Language")
+            .setItems(languages) { _, which ->
+                val selectedLanguage = when (which) {
+                    0 -> Locale.ENGLISH
+                    1 -> Locale.GERMAN
+                    else -> Locale.ENGLISH
+                }
+                textToSpeech.language = selectedLanguage
+                language = when (selectedLanguage) {
+                    Locale.ENGLISH -> "en"
+                    Locale.GERMAN -> "de"
+                    else -> "en"
+                }
+                showSentences(applicationContext.getDatabasePath("new.db").path)
+
+            }
+        builder.create().show()
     }
 
     override fun onInit(status: Int) {
-        if (status == TextToSpeech.SUCCESS) {
-            // Успешная инициализация TTS
-        } else {
-            // Ошибка инициализации TTS
+        if (status != TextToSpeech.SUCCESS) {
+            Toast.makeText(this, "TTS Initialization Failed", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -231,7 +218,6 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         super.onDestroy()
         textToSpeech.stop()
         textToSpeech.shutdown()
-        timer.cancel()
+        if (::timer.isInitialized) timer.cancel()
     }
 }
-

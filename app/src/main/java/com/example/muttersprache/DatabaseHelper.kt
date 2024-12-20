@@ -45,9 +45,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         if (!translationColumnExists) {
             val addColumnQuery1 = "ALTER TABLE $TABLE_NAME ADD COLUMN $COLUMN_NAME_TRANSLATION TEXT"
             val addColumnQuery2 = "ALTER TABLE $TABLE_NAME ADD COLUMN $COLUMN_NAME_LANGUAGE TEXT"
-            val addColumnQuery3 = "UPDATE $TABLE_NAME SET $COLUMN_NAME_TRANSLATION = 'rus'"
-            val addColumnQuery4 = "UPDATE $TABLE_NAME SET $COLUMN_NAME_LANGUAGE = 'ger'"
-            db.execSQL(addColumnQuery3)
+            val addColumnQuery4 = "UPDATE $TABLE_NAME SET $COLUMN_NAME_LANGUAGE = 'de'"
             db.execSQL(addColumnQuery4)
             db.execSQL(addColumnQuery1)
             db.execSQL(addColumnQuery2)
