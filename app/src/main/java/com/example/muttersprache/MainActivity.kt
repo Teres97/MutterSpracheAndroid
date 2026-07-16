@@ -2,10 +2,14 @@ package com.example.muttersprache
 
 import android.app.AlertDialog
 import android.content.DialogInterface
+import android.content.Intent
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
 import android.widget.*
 import androidx.activity.ComponentActivity
 import java.io.File
@@ -14,6 +18,10 @@ import java.util.*
 import java.util.Timer
 import java.util.TimerTask
 import kotlin.math.log
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class Quintuple<T1, T2, T3, T4, T5>(val first: T1, val second: T2, val third: T3, val fourth: T4, val fifth: T5) {
     override fun toString(): String {
@@ -26,10 +34,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private lateinit var sentences: MutableList<Quintuple<String, String, String, String, String>>
     private lateinit var timer: Timer
     private lateinit var listView: ListView
-    private lateinit var deleteIDInput: EditText
-
+    private lateinit var dbHelper: DatabaseHelper
     private var speed: Float = 0.7f
-    private var currentDeleteID: String = ""
     private var repeatTime: Long = 60000
     private var repeatSentence: String = ""
     private var flagTimer: Boolean = false
@@ -39,7 +45,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        val dbHelper = DatabaseHelper(this)
+        // Инициализируем один раз
+        dbHelper = DatabaseHelper(this)
         listView = findViewById(R.id.listView)
 
         val DATABASE_NAME = "new.db"
@@ -60,8 +67,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         }
         language = "en"
         loadSentencesFromDatabase(databasePath)
-        val adapter = ArrayAdapter(this, R.layout.list_item_layout, R.id.textViewText, sentences)
-        listView.adapter = adapter
+        setupListViewAdapter(databasePath)
 
         textToSpeech = TextToSpeech(this, this)
 
@@ -72,11 +78,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             val text = editText.text.toString()
             val translation = translateText.text.toString()
             if (text.isNotEmpty()) {
-                when (language) {
-                    "de" -> dbHelper.addSentence(text, translation, 0, "de")
-                    "en" -> dbHelper.addSentence(text, translation, 0, "en")
-                    else -> dbHelper.addSentence(text, translation, 0, "en")
-                }
+                dbHelper.addSentence(text, translation, 0, language)
                 editText.text.clear()
                 translateText.text.clear()
                 showSentences(databasePath)
@@ -92,17 +94,6 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         val repeatButton: Button = findViewById(R.id.repeat_button)
         repeatButton.setOnClickListener { repeatSpeech() }
 
-        deleteIDInput = findViewById(R.id.deleteId)
-
-        val deleteButton: Button = findViewById(R.id.deleteIdButton)
-        deleteButton.setOnClickListener {
-            if (deleteIDInput.text.isNotEmpty()) {
-                val deleteID = deleteIDInput.text.toString().toInt()
-                dbHelper.deleteSentence(deleteID)
-                showSentences(databasePath)
-            }
-        }
-
         val speedSeekBar: SeekBar = findViewById(R.id.speedSeekBar)
         speedSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
@@ -115,11 +106,57 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
         val languageButton: Button = findViewById(R.id.languageButton)
         languageButton.setOnClickListener { showLanguageSelectionDialog() }
+
+        val manageLangsButton: Button = findViewById(R.id.manageLangsButton)
+        manageLangsButton.setOnClickListener {
+            val intent = Intent(this, LanguagesActivity::class.java)
+            startActivity(intent)
+        }
+
+        val settingsButton: View = findViewById(R.id.settingsButton)
+        settingsButton.setOnClickListener {
+            val intent = Intent(this, SettingsActivity::class.java)
+            startActivity(intent)
+        }
+    }
+
+    private fun setupListViewAdapter(databasePath: String) {
+        val adapter = object : BaseAdapter() {
+            override fun getCount(): Int = sentences.size
+            override fun getItem(position: Int): Quintuple<String, String, String, String, String> = sentences[position]
+            override fun getItemId(position: Int): Long = sentences[position].first.toLong()
+
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
+                val view = convertView ?: LayoutInflater.from(this@MainActivity)
+                    .inflate(R.layout.list_item_sentence, parent, false)
+
+                val item = sentences[position]
+                view.findViewById<TextView>(R.id.tvSentenceText).text = item.second
+                view.findViewById<TextView>(R.id.tvSentenceTranslation).text = item.third
+                
+                val countTv = view.findViewById<TextView>(R.id.tvSentenceCount)
+                countTv.text = "Повторений: ${item.fourth}"
+
+                view.findViewById<ImageButton>(R.id.btnDeleteSentence).setOnClickListener {
+                    val deleteID = item.first.toInt()
+                    dbHelper.deleteSentence(deleteID)
+                    showSentences(databasePath)
+                }
+
+                view.setOnClickListener {
+                    repeatSentence = item.second
+                    repeatSpeech()
+                }
+
+                return view
+            }
+        }
+        listView.adapter = adapter
     }
 
     private fun loadSentencesFromDatabase(databasePath: String) {
         val database: SQLiteDatabase = SQLiteDatabase.openDatabase(databasePath, null, SQLiteDatabase.OPEN_READWRITE)
-        val cursor: Cursor = database.rawQuery("SELECT rowid, text, translation, count, language FROM sentences where language=?", arrayOf(language))
+        val cursor: Cursor = database.rawQuery("SELECT rowid, text, translation, count, language FROM sentences where language=? AND (isDeleted IS NULL OR isDeleted = 0)", arrayOf(language))
         sentences = mutableListOf()
         while (cursor.moveToNext()) {
             sentences.add(Quintuple(cursor.getString(0), cursor.getString(1), cursor.getString(2), cursor.getString(3), cursor.getString(4)))
@@ -138,7 +175,10 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             timer = Timer()
             timer.schedule(object : TimerTask() {
                 override fun run() {
-                    speakRandomSentence()
+                    // Обертываем вызов в runOnUiThread
+                    runOnUiThread {
+                        speakRandomSentence()
+                    }
                 }
             }, 0, repeatTime)
             flagTimer = true
@@ -156,57 +196,93 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         if (sentences.isNotEmpty()) {
             val index = Random().nextInt(sentences.size)
             val sentence = sentences[index].second
+            val translation = sentences[index].third
+            val id = sentences[index].first
+            val count = sentences[index].fourth
+
             repeatSentence = sentence
             textToSpeech.setSpeechRate(speed)
             textToSpeech.speak(sentence, TextToSpeech.QUEUE_FLUSH, null)
 
-            val textView: TextView = findViewById(R.id.textViewSentences)
-            runOnUiThread { textView.text = sentence }
+            StatsManager.incrementTodayCount(this)
 
-            val dbHelper = DatabaseHelper(this)
-            dbHelper.updateSentence(sentences[index].first, sentences[index].fourth)
-            currentDeleteID = sentences[index].first
-            deleteIDInput.setText(currentDeleteID)
-            showSentences(applicationContext.getDatabasePath("new.db").path)
+            // Всё обновление UI строго внутри runOnUiThread
+            runOnUiThread {
+                val textView: TextView = findViewById(R.id.textViewSentences)
+                textView.text = "$sentence\n$translation"
+
+                // Запускаем обновление БД и списка во вторичном потоке, чтобы не вешать экран
+                Thread {
+                    dbHelper.updateSentence(id, count)
+                    val path = applicationContext.getDatabasePath("new.db").path
+
+                    // После обновления БД, возвращаемся в UI поток обновить список
+                    runOnUiThread {
+                        showSentences(path)
+                    }
+                }.start()
+            }
         }
     }
 
-    private fun showSentences(databasePath: String) {
+    private fun loadSentencesList(databasePath: String): MutableList<Quintuple<String, String, String, String, String>> {
         val database: SQLiteDatabase = SQLiteDatabase.openDatabase(databasePath, null, SQLiteDatabase.OPEN_READWRITE)
-        val cursor: Cursor = database.rawQuery("SELECT rowid, text, translation, count, language FROM sentences where language=? ORDER BY count DESC", arrayOf(language))
-        sentences = mutableListOf()
+        val cursor: Cursor = database.rawQuery(
+            "SELECT rowid, text, translation, count, language FROM sentences where language=? AND (isDeleted IS NULL OR isDeleted = 0) ORDER BY count DESC",
+            arrayOf(language)
+        )
+        val list = mutableListOf<Quintuple<String, String, String, String, String>>()
         while (cursor.moveToNext()) {
-            sentences.add(Quintuple(cursor.getString(0), cursor.getString(1), cursor.getString(2), cursor.getString(3), cursor.getString(4)))
+            list.add(Quintuple(cursor.getString(0), cursor.getString(1), cursor.getString(2), cursor.getString(3), cursor.getString(4)))
         }
         cursor.close()
         database.close()
+        return list
+    }
+    private fun showSentences(databasePath: String) {
+        // Запускаем тяжелую работу в отдельном потоке
+        Thread {
+            val list = loadSentencesList(databasePath)
 
-        val adapter = ArrayAdapter(this, R.layout.list_item_layout, R.id.textViewText, sentences)
-        runOnUiThread { listView.adapter = adapter }
-        print(language)
+            // Возвращаемся в главный поток, чтобы обновить UI
+            runOnUiThread {
+                sentences.clear()
+                sentences.addAll(list)
+
+                if (listView.adapter == null) {
+                    setupListViewAdapter(databasePath)
+                } else {
+                    (listView.adapter as BaseAdapter).notifyDataSetChanged()
+                }
+            }
+        }.start()
     }
 
     private fun showLanguageSelectionDialog() {
-        val languages = arrayOf("English", "German")
+        val dbLanguages = dbHelper.getAllLanguages()
+        if (dbLanguages.isEmpty()) {
+            Toast.makeText(this, "No languages added. Go to Manage Languages.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val names = dbLanguages.map { it.name }.toTypedArray()
         val builder = AlertDialog.Builder(this)
         builder.setTitle("Select Language")
-            .setItems(languages) { _, which ->
-                val selectedLanguage = when (which) {
-                    0 -> Locale.ENGLISH
-                    1 -> Locale.GERMAN
-                    else -> Locale.ENGLISH
-                }
-                textToSpeech.language = selectedLanguage
-                language = when (selectedLanguage) {
-                    Locale.ENGLISH -> "en"
-                    Locale.GERMAN -> "de"
-                    else -> "en"
-                }
+            .setItems(names) { _, which ->
+                val selected = dbLanguages[which]
+                textToSpeech.language = Locale(selected.code)
+                language = selected.code
                 showSentences(applicationContext.getDatabasePath("new.db").path)
-
             }
         builder.create().show()
     }
+
+    override fun onResume() {
+        super.onResume()
+        // Обновить список предложений при возврате из LanguagesActivity
+        showSentences(applicationContext.getDatabasePath("new.db").path)
+    }
+
+
 
     override fun onInit(status: Int) {
         if (status != TextToSpeech.SUCCESS) {
